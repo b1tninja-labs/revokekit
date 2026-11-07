@@ -22,9 +22,9 @@ __all__ = [
 
 
 def verify_stapled(response: Response, peer_cert: Certificate, sans: list) -> Status:
-    """Pending behaviour defined by RFC 7633.
+    """Pending behaviour defined by RFC 7633 sec. 4.3.3.
 
     Not implemented yet. See the ``stapling.verify_stapled()`` row in ROADMAP.md; this
     stub raises on purpose so nothing downstream mistakes it for working code.
     """
-    raise NotImplementedError("verify_stapled() is not implemented: RFC 7633")
+    raise NotImplementedError("verify_stapled() is not implemented: RFC 7633 sec. 4.3.3")

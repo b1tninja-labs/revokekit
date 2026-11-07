@@ -21,9 +21,9 @@ __all__ = [
 
 
 async def fetch(distribution_point: DistributionPoint, reason: int | None) -> Crl:
-    """Pending behaviour defined by RFC 5280.
+    """Pending behaviour defined by RFC 5280 sec. 4.2.1.13.
 
     Not implemented yet. See the ``crl.fetch()`` row in ROADMAP.md; this stub raises on
     purpose so nothing downstream mistakes it for working code.
     """
-    raise NotImplementedError("fetch() is not implemented: RFC 5280")
+    raise NotImplementedError("fetch() is not implemented: RFC 5280 sec. 4.2.1.13")

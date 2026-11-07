@@ -21,9 +21,9 @@ __all__ = [
 
 
 async def query(url: str, body: bytes, budget: Budget) -> Response:
-    """Pending behaviour defined by RFC 6960.
+    """Pending behaviour defined by RFC 6960 appendix A.
 
     Not implemented yet. See the ``http.query()`` row in ROADMAP.md; this stub raises on
     purpose so nothing downstream mistakes it for working code.
     """
-    raise NotImplementedError("query() is not implemented: RFC 6960")
+    raise NotImplementedError("query() is not implemented: RFC 6960 appendix A")

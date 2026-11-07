@@ -21,18 +21,18 @@ __all__ = [
 
 
 def generate(length: int) -> bytes:
-    """Pending behaviour defined by RFC 9654.
+    """Pending behaviour defined by RFC 9654 sec. 2.1.
 
     Not implemented yet. See the ``nonce.generate()`` row in ROADMAP.md; this stub raises
     on purpose so nothing downstream mistakes it for working code.
     """
-    raise NotImplementedError("generate() is not implemented: RFC 9654")
+    raise NotImplementedError("generate() is not implemented: RFC 9654 sec. 2.1")
 
 
 def check(request_nonce: bytes | None, response_nonce: bytes | None, policy: NoncePolicy) -> None:
-    """Pending behaviour defined by RFC 9654.
+    """Pending behaviour defined by RFC 9654 sec. 2.1.
 
     Not implemented yet. See the ``nonce.check()`` row in ROADMAP.md; this stub raises on
     purpose so nothing downstream mistakes it for working code.
     """
-    raise NotImplementedError("check() is not implemented: RFC 9654")
+    raise NotImplementedError("check() is not implemented: RFC 9654 sec. 2.1")

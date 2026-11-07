@@ -20,9 +20,9 @@ __all__ = [
 
 
 def build(cert: Certificate, issuer: Certificate, nonce: bytes | None) -> bytes:
-    """Pending behaviour defined by RFC 6960, RFC 9919.
+    """Pending behaviour defined by RFC 6960 sec. 4.1, RFC 9919 sec. 3.1.1.
 
     Not implemented yet. See the ``request.build()`` row in ROADMAP.md; this stub raises
     on purpose so nothing downstream mistakes it for working code.
     """
-    raise NotImplementedError("build() is not implemented: RFC 6960, RFC 9919")
+    raise NotImplementedError("build() is not implemented: RFC 6960 sec. 4.1, RFC 9919 sec. 3.1.1")

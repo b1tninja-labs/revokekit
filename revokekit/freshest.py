@@ -21,9 +21,9 @@ __all__ = [
 
 
 def is_fresh(response: Response, at: datetime, tolerance: timedelta) -> bool:
-    """Pending behaviour defined by RFC 9919.
+    """Pending behaviour defined by RFC 9919 sec. 5.
 
     Not implemented yet. See the ``freshest.is_fresh()`` row in ROADMAP.md; this stub
     raises on purpose so nothing downstream mistakes it for working code.
     """
-    raise NotImplementedError("is_fresh() is not implemented: RFC 9919")
+    raise NotImplementedError("is_fresh() is not implemented: RFC 9919 sec. 5")

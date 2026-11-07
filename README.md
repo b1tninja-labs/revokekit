@@ -47,11 +47,13 @@ document, which is the honest grain size for a plan. See [docs/rfc-map.md](docs/
 | RFC 9919 | Proposed Standard | 2026-07 | the lightweight high volume profile, obsoleting RFC 5019 |
 | RFC 7633 | Proposed Standard | 2015-10 | the TLS Feature extension behind OCSP must-staple |
 | RFC 5940 | Proposed Standard | 2010-08 | revocation choices carried inside CMS, the signed document case |
+| RFC 5280 | Proposed Standard | 2008-05 | the CRL and delta CRL profile and CRL validation the crl module follows |
 
 ### Errata watch
 
 - RFC 6960 carries 6 verified errata and is updated by RFC 8954 and RFC 9654: read 9654 before implementing Nonce, because it supersedes the older constraint.
-- RFC 9654 and RFC 9919 report no errata as of 2026-10-29, and both are new enough that implementations are the open question rather than corrections.
+- RFC 9654 and RFC 9919 report no errata as of 2026-11-07 (rfclib), and both are new enough that implementations are the open question rather than corrections.
+- RFC 5280 carries 6 verified errata and is updated by nine later RFCs (6818, 8398, 8399, 9549, 9598, 9608, 9618, 9925, 10007) as of 2026-11-07 (rfclib). RFC 8954 is obsoleted by RFC 9654 and is not a document to implement.
 - RFC 9919 obsoletes RFC 5019. Recipes copied from 5019 describe the superseded profile.
 
 ## Module layout
@@ -77,7 +79,8 @@ document, which is the honest grain size for a plan. See [docs/rfc-map.md](docs/
 ## Install
 
 ```bash
-git clone https://github.com/b1tninja/revokekit.cd revokekit
+git clone https://github.com/b1tninja/revokekit.git
+cd revokekit
 python -m venv .venv
 source .venv/bin/activate          # Windows: .venv\\Scripts\\Activate.ps1
 pip install -e ".[dev]"

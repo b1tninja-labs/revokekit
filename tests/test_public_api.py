@@ -15,14 +15,14 @@ import pytest
 import revokekit as package
 
 SURFACE = [
-    ("request", "build", "RFC 6960, RFC 9919"),
+    ("request", "build", "RFC 6960 sec. 4.1, RFC 9919 sec. 3.1.1"),
     ("response", "parse_and_verify", "RFC 6960"),
-    ("nonce", "generate", "RFC 9654"),
-    ("nonce", "check", "RFC 9654"),
-    ("freshest", "is_fresh", "RFC 9919"),
-    ("http", "query", "RFC 6960"),
-    ("crl", "fetch", "RFC 5280"),
-    ("stapling", "verify_stapled", "RFC 7633"),
+    ("nonce", "generate", "RFC 9654 sec. 2.1"),
+    ("nonce", "check", "RFC 9654 sec. 2.1"),
+    ("freshest", "is_fresh", "RFC 9919 sec. 5"),
+    ("http", "query", "RFC 6960 appendix A"),
+    ("crl", "fetch", "RFC 5280 sec. 4.2.1.13"),
+    ("stapling", "verify_stapled", "RFC 7633 sec. 4.3.3"),
 ]
 
 
@@ -40,7 +40,10 @@ def test_surface_is_documented(module_name, fn, cite):
     module = importlib.import_module(package.__name__ + "." + module_name)
     target = getattr(module, fn)
     assert target.__doc__, fn + " needs a docstring"
-    assert cite in target.__doc__, fn + " must cite the document that defines it"
+    # Docstrings are wrapped, so a long citation can span a line break; compare words, not layout.
+    assert " ".join(cite.split()) in " ".join(target.__doc__.split()), (
+        fn + " must cite the document that defines it"
+    )
 
 
 @pytest.mark.parametrize(("module_name", "fn", "cite"), SURFACE)
