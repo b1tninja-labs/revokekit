@@ -8,14 +8,16 @@
 **Pre-alpha.** The request side and the pure policy are implemented: `request.build` and
 `request.certid` (an OCSP request reproducing the RFC 9919 appendix B.4 example byte for byte),
 `nonce` (RFC 9654 generation, extension encoding, echo check) and `freshest.is_fresh`
-(RFC 9919 sec. 5). Response parsing and verification, CRLs, HTTP and stapling still raise
+(RFC 9919 sec. 5). `response` (parse, CertID matching, signer authorization, signature, freshness) and `crl`
+(verification, delta CRLs, RFC 10007 cRLSign, RFC 9608 noRevAvail). HTTP, CRL fetching and stapling still raise
 `NotImplementedError`, and the test suite records that rather than hiding it. Read
 [ROADMAP.md](ROADMAP.md) before depending on any of it.
 
-**Dependencies.** One, `asn1core`, this workspace's own ASN.1 codec, because an OCSP response and a
-CRL are signed DER and the signature covers the bytes that arrived. It is not on an index yet, so it
-resolves from the sibling checkout. No third-party package: signature arithmetic will come from
-`sigprim`, and path validation from `pkix`.
+**Dependencies.** `asn1core`, this workspace's own ASN.1 codec, because an OCSP response and a
+CRL are signed DER and the signature covers the bytes that arrived; `sigwire[verify]`, the strict
+verify-only seam over `cryptography` for RSA, ECDSA and EdDSA arithmetic (revokekit itself never
+imports `cryptography`; the tests use it to generate a test PKI); and `pkix` for the delegated
+responder's signature and validity. None is on an index yet, so all resolve from sibling checkouts.
 
 revokekit -- OCSP and CRL clients that know the current specification
 

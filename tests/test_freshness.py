@@ -98,3 +98,27 @@ def test_module_never_reads_the_clock():
     assert "now()" not in source
     assert "utcnow" not in source
     assert "time.time" not in source
+
+
+def test_single_response_times_feed_is_fresh():
+    """The times come from a parsed SingleResponse; producedAt plays no part (RFC 9919 sec. 5)."""
+    from pki_helpers import DAY, HOUR, NOW, make_ca, make_leaf, ocsp_response, single_response
+
+    from revokekit import response
+
+    ca = make_ca()
+    leaf = make_leaf(ca)
+    # The builder stamps producedAt with the real clock (after the interval); only the single's own
+    # interval counts.
+    raw = ocsp_response(
+        ca,
+        [single_response(leaf, ca, this_update=NOW - 3 * DAY, next_update=NOW - HOUR)],
+    )
+    basic = response.parse(raw).basic
+    assert basic is not None
+    single = response.match(basic, leaf.parsed, ca.parsed)
+    assert basic.produced_at >= single.this_update
+    verdict = is_fresh(single.this_update, single.next_update, now=NOW)
+    assert not verdict
+    assert verdict.reason is Reason.STALE
+    assert is_fresh(single.this_update, single.next_update, now=NOW - 2 * DAY)

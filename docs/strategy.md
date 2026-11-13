@@ -11,12 +11,12 @@ are ordered the way they are, and the rules that order has to respect.
 2. **Sans-IO before sockets.** Anything decidable from data plus a clock is implemented
    without touching a socket, so every timeout, retry and rollover is testable without
    sleeping or networking.
-3. **Dependency-free by default.** An exception needs a sentence in README.md explaining why
-   the rule was broken, and a floor with no ceiling. The one exception is `asn1core`, this
-   workspace's own codec: an OCSP response and a CRL are signed DER, so the signature covers the
-   bytes that arrived, and the standard library has no ASN.1 decoder that keeps them. Nothing
-   third-party is allowed, `asn1crypto` and `cryptography` included; signature arithmetic comes
-   from `sigprim` once it is ready, and the delegated responder's chain from `pkix`.
+3. **Dependency-light by default.** An exception needs a sentence in README.md explaining why
+   the rule was broken, and a floor with no ceiling. The exceptions are this workspace's own:
+   `asn1core`, because an OCSP response and a CRL are signed DER, the signature covers the bytes
+   that arrived, and the standard library has no ASN.1 decoder that keeps them; `sigwire[verify]`,
+   the one place `cryptography` is reached, for signature arithmetic; and `pkix`, for the delegated
+   responder's chain. `asn1crypto` and `pyasn1` stay out. Package code never imports `cryptography`.
 4. **Positioning is correctness and legibility, not throughput.** The incumbents in this
    corner are usually stale, untyped, or welded to a product. This is the implementation that
    says how it knows what it claims.

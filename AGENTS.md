@@ -54,10 +54,12 @@ rather than merely incomplete.
 3. **Normative text is never paraphrased from memory.** Fetch it with `rfclib` and
    cite the section. If the text you fetch does not say what the obligation claims,
    the obligation is wrong: fix the roadmap row and say so in the commit.
-4. **Dependencies.** `pyproject.toml` declares one runtime dependency, `asn1core`, this workspace's own
-   codec, resolved from the sibling checkout (`pythonpath` and `mypy_path` point at `../asn1core`) because it
-   is not on an index yet. Nothing third-party: no `asn1crypto`, `pyasn1` or `cryptography`; signature
-   arithmetic will come from `sigprim` and chain decisions from `pkix`. Adding another runtime dependency
+4. **Dependencies.** `pyproject.toml` declares `asn1core` (this workspace's own codec), `sigwire[verify]`
+   (signature verification; `sigprim` was merged into it) and `pkix` (the delegated responder's signature and
+   validity), resolved from sibling checkouts (`pythonpath` and `mypy_path` point at `../asn1core`,
+   `../sigwire`, `../pkix`) because none is on an index yet. No `asn1crypto` or `pyasn1`, and package code
+   never imports `cryptography`: it arrives only through `sigwire.verify`. The tests import it to generate a
+   test PKI (`tests/pki_helpers.py`); that is a test convenience, not a specification vector. Adding another runtime dependency
    needs a paragraph of justification in `docs/strategy.md` explaining why the standard library is not
    enough. Until asn1core has a DER builder, `request.py` assembles its few TLVs with a private `_tlv`
    (row `rk.request-asn1core-builder`).

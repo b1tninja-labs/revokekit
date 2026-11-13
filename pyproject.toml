@@ -36,8 +36,10 @@ classifiers = [
 # asn1core is ours, and an OCSP response is a signed DER object: the signature covers the
 # bytes that arrived, so the codec has to keep them (docs/strategy.md says why in full). It is not
 # on an index yet, so until it ships it resolves from the sibling checkout, as pkix does.
-# Nothing third-party is declared: signature arithmetic will come through sigprim, not here.
-dependencies = ["asn1core"]
+# sigwire[verify] is the verify-only signature seam (it carries the one third-party dependency,
+# `cryptography`, for RSA, ECDSA and EdDSA arithmetic) and pkix decides certificate chains and the
+# delegated responder's own signature and validity. Both resolve from sibling checkouts until they ship.
+dependencies = ["asn1core", "sigwire[verify]", "pkix"]
 
 [project.optional-dependencies]
 dev = [
@@ -74,7 +76,7 @@ include = ["/revokekit/", "/tests/", "/docs/", "/README.md", "/ROADMAP.md", "/CH
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 # "../asn1core" resolves the codec from the sibling checkout in this workspace (see `dependencies`).
-pythonpath = [".", "../asn1core"]
+pythonpath = [".", "../asn1core", "../sigwire", "../pkix"]
 asyncio_mode = "auto"
 addopts = "-ra"
 
@@ -111,6 +113,9 @@ ignore = [
 # S101 in tests is the policy, S311 is a seeded generator rather than a token, and a
 # test double has to accept parameters it ignores, which ARG would otherwise flag.
 "tests/*" = ["S101", "S106", "S311", "ARG001", "ARG002"]
+# The names say what happened (SignatureInvalid, ResponderNotAuthorized); an Error suffix on each
+# would only lengthen every except clause, as in pkix and sigwire.
+"revokekit/errors.py" = ["N818"]
 
 [tool.ruff.format]
 quote-style = "double"
@@ -119,7 +124,7 @@ indent-style = "space"
 [tool.mypy]
 python_version = "3.12"
 # Checked against asn1core's own annotations when the sibling checkout is present.
-mypy_path = "../asn1core"
+mypy_path = "../asn1core:../sigwire:../pkix"
 warn_unused_ignores = true
 warn_redundant_casts = true
 no_implicit_optional = true

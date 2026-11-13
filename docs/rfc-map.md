@@ -27,6 +27,8 @@ Status detail, read with rfclib on 2026-11-13:
 | RFC 5754 | updates RFC 3370 | 2 verified | defines SHA-256 as RFC 9919 sec. 3.1.1 uses it (sec. 2.2 of RFC 5754) |
 | RFC 5019, RFC 8954 | obsolete (by RFC 9919, RFC 9654) | n/a | not documents to implement |
 
+Sections read in full on 2026-11-13 for M2 and M5: RFC 6960 sec. 2.2, 4.2.1, 4.2.2 (4.2.2.1 to 4.2.2.3) and 4.4.8; RFC 9919 sec. 3.2 and 4; RFC 5280 sec. 5.2, 5.2.3, 5.2.4, 5.2.5, 5.3.3 and 6.3; RFC 10007 sec. 3 and 4; RFC 9608 sec. 2 to 5. Errata were read for RFC 6960 and RFC 5280: none touches those sections.
+
 Test vectors: `tests/fixtures/rfc9919/` holds RFC 9919 appendix B.1, B.2 and B.4 (see its `SOURCES.txt`); the nonce extension example is RFC 9654 sec. 2.1.
 
 Citation rules, in the order they most often get broken:

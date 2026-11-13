@@ -10,7 +10,10 @@ The format follows Keep a Changelog, and this project adheres to Semantic Versio
   optional nonce extension; reproduces RFC 9919 appendix B.4.
 - `nonce.generate`, `encode_extension`, `decode_extension`, `check` (RFC 9654 sec. 2.1, RFC 9919 sec. 5).
 - `freshest.is_fresh` with an injected clock (RFC 9919 sec. 5).
-- `asn1core` as the one runtime dependency, resolved from the sibling checkout.
+- `asn1core` as a runtime dependency, resolved from the sibling checkout.
+- `response.parse`, `match`, `authorize_signer`, `verify_signature` and `parse_and_verify`: OCSP response parsing that keeps the signed bytes, status and CertID matching, delegated responder rules (RFC 6960 sec. 4.2.2.2), signature through `sigwire[verify]`, nonce and freshness.
+- `crl.parse_and_verify` and `crl.status_of`: CRL verification, delta CRL combination (RFC 5280 sec. 5.2.4, 6.3.3), the RFC 10007 cRLSign check; `crl.revocation_required` and `norevavail_problems` for RFC 9608.
+- `sigwire[verify]` and `pkix` as runtime dependencies (sibling checkouts).
 
 ### Changed
 
