@@ -6,8 +6,19 @@ import asn1core
 import pytest
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.x509.oid import AuthorityInformationAccessOID, ObjectIdentifier
-from pki_helpers import DAY, HOUR, NOW, _builder, crl_der, key_usage, make_ca, make_leaf, name
+from cryptography.x509.oid import AuthorityInformationAccessOID, NameOID, ObjectIdentifier
+from pki_helpers import (
+    DAY,
+    HOUR,
+    NOW,
+    Party,
+    _builder,
+    crl_der,
+    key_usage,
+    make_ca,
+    make_leaf,
+    name,
+)
 
 from revokekit import crl as crl_module
 from revokekit.errors import CrlError, NoRevAvailViolation, SignatureInvalid
@@ -58,7 +69,7 @@ def test_crl_issuer_name_and_time_are_checked():
 def test_status_requires_the_crl_issuer_to_be_the_certificate_issuer():
     verified = _verify(crl_der(CA))
     stranger = make_leaf(make_ca("Elsewhere"))
-    with pytest.raises(CrlError, match="not issued by the CRL issuer"):
+    with pytest.raises(CrlError, match="no CRL from the certificate's issuer"):
         crl_module.status_of(stranger.parsed, verified, at=NOW)
 
 
@@ -87,8 +98,21 @@ def test_crl_signer_without_crlsign_is_refused():
             crl_module.check_issuer_key_usage(decoy.parsed)
 
 
+_FRESHEST = (
+    x509.FreshestCRL(
+        [
+            x509.DistributionPoint(
+                [x509.UniformResourceIdentifier("http://d.example/d")], None, None, None
+            )
+        ]
+    ),
+    False,
+)
+
+
 def _delta_pair(complete_revoked=(), delta_revoked=(), **delta_kw):
-    complete = _verify(crl_der(CA, complete_revoked, number=5))
+    # pkix reads a delta only when the CRL carries FreshestCRL (RFC 5280 sec. 6.3.3 (h)).
+    complete = _verify(crl_der(CA, complete_revoked, number=5, extra_extensions=[_FRESHEST]))
     delta = _verify(crl_der(CA, delta_revoked, number=7, delta_base=5, **delta_kw))
     return complete, delta
 
@@ -175,7 +199,7 @@ def test_idp_scope_is_applied():
         .sign(CA.key, hashes.SHA256())
     )
     ca_parsed = asn1core.parse_certificate(ca_cert.public_bytes(serialization.Encoding.DER))
-    with pytest.raises(CrlError, match="only user certificates"):
+    with pytest.raises(CrlError, match="onlyContainsUserCerts"):
         crl_module.status_of(ca_parsed, verified, at=NOW)
     unsupported = x509.IssuingDistributionPoint(
         full_name=None,
@@ -186,7 +210,8 @@ def test_idp_scope_is_applied():
         indirect_crl=False,
         only_contains_attribute_certs=False,
     )
-    with pytest.raises(CrlError, match="onlySomeReasons"):
+    # onlySomeReasons is decided by pkix now: one reason alone leaves the status UNDETERMINED.
+    with pytest.raises(CrlError, match="no usable CRL covers the reasons"):
         crl_module.status_of(LEAF.parsed, _verify(crl_der(CA, idp=unsupported)), at=NOW)
 
 
@@ -305,3 +330,187 @@ def test_norevavail_with_forbidden_companions_is_invalid():
         crl_module.revocation_required(_cert_with(bad_value))
     # Without the extension the same companions are fine.
     assert crl_module.revocation_required(_cert_with(crldp)) is True
+
+
+# -- CRL decisions are pkix's (rk.crl-decide-via-pkix) and the extensions asn1core's -------------
+
+_IDP_OID = ObjectIdentifier("2.5.29.28")
+_NUMBER_OID = ObjectIdentifier("2.5.29.20")
+
+
+def _idp(**kw):
+    base = {
+        "full_name": None,
+        "relative_name": None,
+        "only_contains_user_certs": False,
+        "only_contains_ca_certs": False,
+        "only_some_reasons": None,
+        "indirect_crl": False,
+        "only_contains_attribute_certs": False,
+    }
+    return x509.IssuingDistributionPoint(**(base | kw))
+
+
+def _der_integer(value: int) -> bytes:
+    body = value.to_bytes((value.bit_length() // 8) + 1, "big")
+    return b"\x02" + asn1core.encode_length(len(body)) + body
+
+
+def test_crl_extensions_are_read_by_asn1core():
+    # The extensions come back as asn1core's types: one DER reader.
+    verified = _verify(crl_der(CA, idp=_idp(only_contains_user_certs=True), number=7))
+    assert isinstance(verified.idp, asn1core.extensions.IssuingDistributionPoint)
+    assert verified.idp.only_contains_user_certs
+    assert verified.number == 7
+    # X.690 sec. 11.5: an encoded DEFAULT FALSE is not DER. The old reader accepted [1] FALSE.
+    default_false = (x509.UnrecognizedExtension(_IDP_OID, b"\x30\x03\x81\x01\x00"), True)
+    with pytest.raises(CrlError, match="malformed CRL extension"):
+        _verify(crl_der(CA, extra_extensions=[default_false]))
+    # RFC 5280 sec. 5.2.3 limits issuers to 20 octets; a verifier is not told to refuse more.
+    # The old reader refused 21 octets, so every CRL after it was unusable.
+    huge = 1 << 167  # 22 content octets with the sign octet; the old reader stopped at 21
+    assert len(_der_integer(huge)) - 2 == 22
+    number = (x509.UnrecognizedExtension(_NUMBER_OID, _der_integer(huge)), False)
+    assert _verify(crl_der(CA, number=None, extra_extensions=[number])).number == huge
+
+
+def test_status_of_agrees_with_pkix_crl_checker():
+    import pkix.revocation as pr
+
+    revoked = [(1002, NOW - DAY, x509.ReasonFlags.key_compromise)]
+    complete = _verify(crl_der(CA, revoked, number=3))
+    for cert, state in ((REVOKED, "revoked"), (LEAF, "good")):
+        ours = crl_module.status_of(cert.parsed, complete, at=NOW)
+        spki = CA.parsed.subject_public_key_info
+        request = pr.RevocationRequest(cert.parsed, CA.parsed.subject, spki, CA.parsed, NOW, 1)
+        theirs = pr.CrlChecker([complete.crl])(request)
+        assert (ours.state, theirs.status) == (state, state)
+        assert ours.answer == theirs
+    # A CRL that cannot settle the status is an error here, never "good".
+    other = make_leaf(make_ca("Elsewhere"))
+    with pytest.raises(CrlError, match="undetermined"):
+        crl_module.status_of(other.parsed, complete, at=NOW)
+
+
+def test_reasons_mask_accumulates_across_partitioned_crls():
+    flags = x509.ReasonFlags
+    first = _idp(
+        only_some_reasons=frozenset(
+            {flags.key_compromise, flags.ca_compromise, flags.affiliation_changed}
+        )
+    )
+    second = _idp(
+        only_some_reasons=frozenset(
+            {
+                flags.superseded,
+                flags.cessation_of_operation,
+                flags.certificate_hold,
+                flags.privilege_withdrawn,
+                flags.aa_compromise,
+            }
+        )
+    )
+    one = _verify(crl_der(CA, idp=first, number=1))
+    two = _verify(crl_der(CA, [(1002, NOW - DAY, flags.superseded)], idp=second, number=1))
+    # One partition alone leaves reasons uncovered: UNDETERMINED, so an error, never good.
+    with pytest.raises(CrlError, match="no usable CRL covers the reasons"):
+        crl_module.status_of(LEAF.parsed, one, at=NOW)
+    both = crl_module.status_of(LEAF.parsed, one, at=NOW, more_crls=[two.crl])
+    assert both.state == "good"
+    hit = crl_module.status_of(REVOKED.parsed, one, at=NOW, more_crls=[two.crl])
+    assert (hit.state, hit.reason) == ("revoked", 4)
+
+
+def _rdn(value: str) -> x509.RelativeDistinguishedName:
+    return x509.RelativeDistinguishedName(
+        [x509.NameAttribute(NameOID.ORGANIZATIONAL_UNIT_NAME, value)]
+    )
+
+
+def test_relative_distribution_point_name_is_matched():
+    verified = _verify(crl_der(CA, idp=_idp(relative_name=_rdn("p1"))))
+
+    def leaf_with(point_rdn):
+        key = make_leaf(CA).key
+        point = x509.DistributionPoint(None, point_rdn, None, None)
+        cert = (
+            _builder(name("rdn.example"), CA.cert.subject, key, 1600)
+            .add_extension(x509.CRLDistributionPoints([point]), critical=False)
+            .sign(CA.key, hashes.SHA256())
+        )
+        return asn1core.parse_certificate(cert.public_bytes(serialization.Encoding.DER))
+
+    assert crl_module.status_of(leaf_with(_rdn("p1")), verified, at=NOW).state == "good"
+    with pytest.raises(CrlError, match="another distribution point"):
+        crl_module.status_of(leaf_with(_rdn("p2")), verified, at=NOW)
+
+
+def test_explicit_delta_that_pkix_leaves_unread_is_refused():
+    # No FreshestCRL anywhere: pkix would ignore the delta, which names the leaf. Never "good".
+    complete = _verify(crl_der(CA, number=5))
+    named = [(1001, NOW - HOUR, x509.ReasonFlags.key_compromise)]
+    delta = _verify(crl_der(CA, named, number=7, delta_base=5))
+    with pytest.raises(CrlError, match="did not apply it"):
+        crl_module.status_of(LEAF.parsed, complete, delta, at=NOW)
+
+
+def test_indirect_crl_entries_are_attributed_by_certificate_issuer():
+    import pkix.anchors
+
+    root = make_ca("Root")
+    signer_key = make_leaf(root).key
+    signer_cert = (
+        _builder(name("CRL Signer"), root.cert.subject, signer_key, 50)
+        .add_extension(key_usage(crl_sign=True), critical=True)
+        .sign(root.key, hashes.SHA256())
+    )
+    signer = Party(signer_key, signer_cert)
+    dp = x509.DistributionPoint(None, None, None, [x509.DirectoryName(signer_cert.subject)])
+
+    def leaf(serial):
+        cert = (
+            _builder(name("ind.example"), root.cert.subject, make_leaf(root).key, serial)
+            .add_extension(x509.CRLDistributionPoints([dp]), critical=False)
+            .sign(root.key, hashes.SHA256())
+        )
+        return asn1core.parse_certificate(cert.public_bytes(serialization.Encoding.DER))
+
+    # Entries name their certificate issuer (RFC 5280 sec. 5.3.3): without it they would be the
+    # CRL signer's own certificates.
+    entry = (
+        x509.RevokedCertificateBuilder()
+        .serial_number(7001)
+        .revocation_date(NOW - DAY)
+        .add_extension(
+            x509.CertificateIssuer([x509.DirectoryName(root.cert.subject)]), critical=True
+        )
+        .add_extension(x509.CRLReason(x509.ReasonFlags.key_compromise), critical=False)
+        .build()
+    )
+    indirect = (
+        x509.CertificateRevocationListBuilder()
+        .issuer_name(signer_cert.subject)
+        .last_update(NOW - HOUR)
+        .next_update(NOW + DAY)
+        .add_extension(x509.CRLNumber(1), critical=False)
+        .add_extension(_idp(indirect_crl=True), critical=True)
+        .add_revoked_certificate(entry)
+        .sign(signer_key, hashes.SHA256())
+        .public_bytes(serialization.Encoding.DER)
+    )
+    verified = crl_module.parse_and_verify(indirect, signer.parsed, at=NOW)
+    anchor = pkix.anchors.load_anchor(root.cert.public_bytes(serialization.Encoding.DER))
+    extra = {
+        "issuer": root.parsed,
+        "certificates": [signer.parsed],
+        "anchor": anchor,
+        "more_crls": [crl_der(root)],
+        "at": NOW,
+    }
+    hit = crl_module.status_of(leaf(7001), verified, **extra)
+    assert (hit.state, hit.reason) == ("revoked", 1)
+    assert crl_module.status_of(leaf(7002), verified, **extra).state == "good"
+    # Without the trust anchor (and without Root's own CRL, which would answer for the assumed
+    # distribution point) the CRL signer's path cannot be validated: never "good".
+    with pytest.raises(CrlError):
+        crl_module.status_of(leaf(7002), verified, **{**extra, "anchor": None, "more_crls": []})
