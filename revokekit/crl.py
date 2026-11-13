@@ -24,6 +24,7 @@ import asn1core.extensions
 import pkix.revocation
 import sigwire.verify as sv
 from asn1core import Tag, TagClass
+from pkix.errors import PkixError
 
 from ._verify import SignatureCheck, verify_signed
 from .errors import CrlError, NoRevAvailViolation
@@ -38,7 +39,6 @@ if TYPE_CHECKING:
 __all__ = [
     "CrlStatus",
     "VerifiedCrl",
-    "check_issuer_key_usage",
     "fetch",
     "norevavail_problems",
     "parse_and_verify",
@@ -63,7 +63,6 @@ _ENTRY_INVALIDITY_DATE = (2, 5, 29, 24)
 _ENTRY_CERTIFICATE_ISSUER = (2, 5, 29, 29)  # sec. 5.3.3, read by pkix
 _ENTRY_KNOWN = frozenset({_ENTRY_REASON, _ENTRY_INVALIDITY_DATE, _ENTRY_CERTIFICATE_ISSUER})
 
-_KEY_USAGE = "2.5.29.15"
 _BASIC_CONSTRAINTS = "2.5.29.19"
 _CRL_DISTRIBUTION_POINTS = "2.5.29.31"
 _FRESHEST_CRL_DOTTED = "2.5.29.46"
@@ -71,44 +70,28 @@ _AUTHORITY_INFO_ACCESS = "1.3.6.1.5.5.7.1.1"
 _NO_REV_AVAIL = "2.5.29.56"
 _OCSP_NOCHECK = "1.3.6.1.5.5.7.48.1.5"
 _ID_AD_OCSP = (1, 3, 6, 1, 5, 5, 7, 48, 1)
-_CRL_SIGN_BIT = 6  # KeyUsage ::= BIT STRING { ..., cRLSign (6), ... } (RFC 5280 sec. 4.2.1.3)
-_VERSION_V3 = 2  # asn1core reports the encoded number: v3 is 2
 
 _INTEGER = Tag(2, False, TagClass.universal)
 _OID = Tag(6, False, TagClass.universal)
-_BIT_STRING = Tag(3, False, TagClass.universal)
 _BOOLEAN = Tag(1, False, TagClass.universal)
 
 
 # -- certificate-side rules ----------------------------------------------------------------------
 
 
-def check_issuer_key_usage(cert: asn1core.Certificate) -> None:
-    """RFC 10007 sec. 4, the replacement for step (f) of RFC 5280 sec. 6.3.3.
-
-    "If the version of the CRL issuer's certificate is version 3 (v3), then verify that the key
-    usage extension is present and verify that the cRLSign bit is set." A v1 or v2 certificate has
-    no extensions field and is not checked. Raises ``CrlError``.
-    """
-    if cert.version != _VERSION_V3:
+def _check_issuer_key_usage(issuer: asn1core.Certificate) -> None:
+    """RFC 10007 sec. 4 through ``pkix.revocation.check_crl_issuer_key_usage``; raises ``CrlError``."""
+    try:
+        check = pkix.revocation.check_crl_issuer_key_usage(issuer)
+    except PkixError as error:
+        raise CrlError(f"the CRL issuer's keyUsage is unusable: {error}") from error
+    if check.ok:
         return
-    ext = cert.extension(_KEY_USAGE)
-    if ext is None:
+    if check.reason == "no_key_usage":
         raise CrlError(
             "the CRL issuer's v3 certificate has no keyUsage extension (RFC 10007 sec. 4)"
         )
-    try:
-        node, end = asn1core.decode(ext.value, der=True)
-        if end != len(ext.value) or node.tag != _BIT_STRING or node.payload is None:
-            raise CrlError("keyUsage is not a single BIT STRING")
-        _unused, bits = asn1core.check_bit_string(node.payload)
-    except asn1core.Asn1Error as error:
-        raise CrlError(f"keyUsage is not DER: {error}") from error
-    # X.690 sec. 11.2.2: trailing zero bits are removed, so a short string means "not set".
-    index, mask = divmod(_CRL_SIGN_BIT, 8)
-    set_ = index < len(bits) and bool(bits[index] & (0x80 >> mask))
-    if not set_:
-        raise CrlError("the CRL issuer's keyUsage does not assert cRLSign (RFC 10007 sec. 4)")
+    raise CrlError("the CRL issuer's keyUsage does not assert cRLSign (RFC 10007 sec. 4)")
 
 
 def norevavail_problems(cert: asn1core.Certificate) -> list[str]:
@@ -227,7 +210,7 @@ def parse_and_verify(
     """Read a CRL and verify it as issued by ``issuer`` (RFC 5280 sec. 6.3.3 steps (b), (f), (g)).
 
     Order: the CRL's issuer name equals ``issuer``'s subject; ``issuer`` asserts cRLSign (RFC 10007
-    ``check_issuer_key_usage``); the outer signatureAlgorithm equals the inner (sec. 5.1.1.2); no
+    pkix's ``check_crl_issuer_key_usage``); the outer signatureAlgorithm equals the inner (sec. 5.1.1.2); no
     critical extension is left unprocessed (sec. 5.2); the signature over the stored
     ``tbsCertList`` verifies; and ``at`` is not before thisUpdate or after nextUpdate (sec. 6.3.3
     step (a)(1): a current time past nextUpdate means fetch a newer one). Raises ``CrlError`` or
@@ -239,7 +222,7 @@ def parse_and_verify(
         raise CrlError(f"not a usable CRL: {error}") from error
     if not asn1core.names_equal(crl.issuer, issuer.subject):
         raise CrlError("the CRL issuer is not the issuer certificate's subject (step (b)(1))")
-    check_issuer_key_usage(issuer)
+    _check_issuer_key_usage(issuer)
 
     tbs, _ = asn1core.decode(crl.tbs_cert_list, der=True)
     fields = list(tbs.children)
@@ -395,8 +378,14 @@ def status_of(
         except asn1core.Asn1Error:
             continue  # pkix would never use an unreadable CRL either
     crls = [complete.crl, *([delta.crl] if delta is not None else []), *extra_crls]
+    # A delta the caller holds is the delta to use (sec. 6.3.3 (c), (h), (i)), whether or not the
+    # certificate or the CRL carries FreshestCRL: pkix's explicit-delta mode.
     checker = pkix.revocation.CrlChecker(
-        crls, certificates=certificates, policy=policy, use_deltas=delta is not None
+        crls,
+        certificates=certificates,
+        policy=policy,
+        use_deltas=delta is not None,
+        explicit_deltas=delta is not None,
     )
     request = pkix.revocation.RevocationRequest(
         certificate=cert,
@@ -410,34 +399,14 @@ def status_of(
     answer = checker(request)
     if answer.status not in ("good", "revoked"):
         raise CrlError(f"{answer.status}: {answer.reason}")
-    if (
-        delta is not None
-        and "with delta" not in answer.reason
-        and any(e.serial == cert.serial for e in delta.crl.revoked)
-    ):
-        # pkix reads a delta only when the CRL or the certificate carries FreshestCRL (sec. 6.3.3
-        # (h)); a delta handed in explicitly that it left unread, and that mentions this
-        # certificate, would make the answer disagree with the caller's evidence: refuse instead.
-        raise CrlError(
-            "the delta CRL names this certificate but pkix did not apply it: neither the CRL nor "
-            "the certificate carries FreshestCRL (ROADMAP rk.crl-explicit-delta)"
-        )
-    entry, from_delta = None, False
-    sources = [(delta.crl, True)] if delta is not None else []
-    sources += [(complete.crl, False), *((c, False) for c in extra_crls)]
-    for source, is_delta in sources:
-        found = [e for e in source.revoked if e.serial == cert.serial]
-        if found:
-            entry, from_delta = found[0] if len(found) == 1 else None, is_delta
-            break
     if answer.status == "good":
-        return CrlStatus("good", None, None, from_delta and entry is not None, False, answer)
-    # The decision is pkix's; the reason code and date are read back from the entry for the
-    # caller. An indirect CRL may hold several entries for one serial (one per certificate
-    # issuer): then the details stay None rather than guessed (ROADMAP rk.crl-answer-details).
-    reason = None if entry is None else (entry.reason if entry.reason is not None else 0)
-    when = None if entry is None else entry.revocation_date
-    return CrlStatus("revoked", reason, when, from_delta, reason == 6, answer)
+        return CrlStatus("good", None, None, False, False, answer)
+    # The decision and its details are pkix's: the entry that decided it, found by sec. 5.3.3's
+    # certificateIssuer rule, so an indirect CRL with several entries for one serial is exact.
+    reason, when = answer.reason_code, answer.revocation_date
+    if reason is None or when is None:  # unreachable: pkix fills both for "revoked"
+        raise CrlError("pkix answered revoked without the entry's reason code and date")
+    return CrlStatus("revoked", reason, when, answer.on_delta, reason == 6, answer)
 
 
 async def fetch(distribution_point: DistributionPoint, reason: int | None) -> Any:

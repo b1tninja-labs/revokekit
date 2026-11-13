@@ -95,7 +95,7 @@ def test_crl_signer_without_crlsign_is_refused():
     for neighbour in ("key_cert_sign", "digital_signature", "key_agreement"):
         decoy = make_ca("Decoy CA", key_usage=key_usage(**{neighbour: True}))
         with pytest.raises(CrlError, match="cRLSign"):
-            crl_module.check_issuer_key_usage(decoy.parsed)
+            _verify(crl_der(decoy), issuer=decoy)
 
 
 _FRESHEST = (
@@ -111,7 +111,8 @@ _FRESHEST = (
 
 
 def _delta_pair(complete_revoked=(), delta_revoked=(), **delta_kw):
-    # pkix reads a delta only when the CRL carries FreshestCRL (RFC 5280 sec. 6.3.3 (h)).
+    # The CRL carries FreshestCRL here, so the delta is also one the CRL points at; the tests of
+    # `rk.crl-explicit-delta` below leave it out.
     complete = _verify(crl_der(CA, complete_revoked, number=5, extra_extensions=[_FRESHEST]))
     delta = _verify(crl_der(CA, delta_revoked, number=7, delta_base=5, **delta_kw))
     return complete, delta
@@ -445,13 +446,46 @@ def test_relative_distribution_point_name_is_matched():
         crl_module.status_of(leaf_with(_rdn("p2")), verified, at=NOW)
 
 
-def test_explicit_delta_that_pkix_leaves_unread_is_refused():
-    # No FreshestCRL anywhere: pkix would ignore the delta, which names the leaf. Never "good".
+def test_explicit_delta_is_applied_without_freshest_crl():
+    # Row `rk.crl-explicit-delta`: no FreshestCRL on the CRL or the certificate, yet the caller
+    # holds a delta that names the leaf. pkix's explicit-delta mode reads it (RFC 5280 sec. 6.3.3
+    # (c), (h), (i)); it is neither ignored (a wrong "good") nor refused.
     complete = _verify(crl_der(CA, number=5))
     named = [(1001, NOW - HOUR, x509.ReasonFlags.key_compromise)]
     delta = _verify(crl_der(CA, named, number=7, delta_base=5))
-    with pytest.raises(CrlError, match="did not apply it"):
-        crl_module.status_of(LEAF.parsed, complete, delta, at=NOW)
+    assert crl_module.status_of(LEAF.parsed, complete, at=NOW).state == "good"
+    status = crl_module.status_of(LEAF.parsed, complete, delta, at=NOW)
+    assert (status.state, status.reason, status.from_delta) == ("revoked", 1, True)
+    assert status.revocation_date == NOW - HOUR
+    # A delta that removes a held certificate is read the same way (step (k)).
+    held = _verify(crl_der(CA, [(1003, NOW - DAY, x509.ReasonFlags.certificate_hold)], number=5))
+    release = [(1003, NOW - HOUR, x509.ReasonFlags.remove_from_crl)]
+    released = _verify(crl_der(CA, release, number=7, delta_base=5))
+    assert crl_module.status_of(HELD.parsed, held, at=NOW).on_hold
+    assert crl_module.status_of(HELD.parsed, held, released, at=NOW).state == "good"
+
+
+def test_answer_details_come_from_pkix_for_the_entry_that_decided():
+    # Row `rk.crl-answer-details`: reason code, date and delta origin are pkix's fields, so a
+    # certificate named in a complete CRL keeps its own reason when a delta exists that does not
+    # mention it, and an absent reason code is unspecified (0), not None.
+    complete, delta = _delta_pair(
+        complete_revoked=[(1002, NOW - 2 * DAY, x509.ReasonFlags.superseded)],
+        delta_revoked=[(1001, NOW - HOUR, None)],
+    )
+    old = crl_module.status_of(REVOKED.parsed, complete, delta, at=NOW)
+    assert (old.reason, old.revocation_date, old.from_delta, old.on_hold) == (
+        4,
+        NOW - 2 * DAY,
+        False,
+        False,
+    )
+    assert old.answer is not None
+    assert (old.answer.reason_code, old.answer.on_delta) == (4, False)
+    bare = crl_module.status_of(LEAF.parsed, complete, delta, at=NOW)
+    assert (bare.state, bare.reason, bare.from_delta) == ("revoked", 0, True)
+    held = _verify(crl_der(CA, [(1003, NOW - DAY, x509.ReasonFlags.certificate_hold)], number=5))
+    assert crl_module.status_of(HELD.parsed, held, at=NOW).on_hold
 
 
 def test_indirect_crl_entries_are_attributed_by_certificate_issuer():
