@@ -1,0 +1,5 @@
+Fixtures copied from RFC 9919 (read with rfclib 2026-11-13):
+  root_ca.pem       appendix B.1 Root CA Certificate   (RFC 9919 lines 876-1019)
+  end_entity.pem    appendix B.2 End-Entity Certificate (lines 1020-1144)
+  ocsp_request.b64  appendix B.4 OCSP Request           (lines 1309-1339)
+The request is for the end-entity certificate, serial 27979789, SHA-256 CertID, no extensions.

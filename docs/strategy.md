@@ -12,7 +12,11 @@ are ordered the way they are, and the rules that order has to respect.
    without touching a socket, so every timeout, retry and rollover is testable without
    sleeping or networking.
 3. **Dependency-free by default.** An exception needs a sentence in README.md explaining why
-   the rule was broken, and a floor with no ceiling.
+   the rule was broken, and a floor with no ceiling. The one exception is `asn1core`, this
+   workspace's own codec: an OCSP response and a CRL are signed DER, so the signature covers the
+   bytes that arrived, and the standard library has no ASN.1 decoder that keeps them. Nothing
+   third-party is allowed, `asn1crypto` and `cryptography` included; signature arithmetic comes
+   from `sigprim` once it is ready, and the delegated responder's chain from `pkix`.
 4. **Positioning is correctness and legibility, not throughput.** The incumbents in this
    corner are usually stale, untyped, or welded to a product. This is the implementation that
    says how it knows what it claims.

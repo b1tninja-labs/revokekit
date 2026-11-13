@@ -5,10 +5,17 @@
      the badges stay commented out until the tag exists.
 -->
 
-**Pre-alpha shell.** The package surface, the obligation matrix and the CI gates exist.
-No protocol behaviour is implemented: every public function raises `NotImplementedError`,
-and the test suite records that rather than hiding it. Read
+**Pre-alpha.** The request side and the pure policy are implemented: `request.build` and
+`request.certid` (an OCSP request reproducing the RFC 9919 appendix B.4 example byte for byte),
+`nonce` (RFC 9654 generation, extension encoding, echo check) and `freshest.is_fresh`
+(RFC 9919 sec. 5). Response parsing and verification, CRLs, HTTP and stapling still raise
+`NotImplementedError`, and the test suite records that rather than hiding it. Read
 [ROADMAP.md](ROADMAP.md) before depending on any of it.
+
+**Dependencies.** One, `asn1core`, this workspace's own ASN.1 codec, because an OCSP response and a
+CRL are signed DER and the signature covers the bytes that arrived. It is not on an index yet, so it
+resolves from the sibling checkout. No third-party package: signature arithmetic will come from
+`sigprim`, and path validation from `pkix`.
 
 revokekit -- OCSP and CRL clients that know the current specification
 
@@ -48,6 +55,9 @@ document, which is the honest grain size for a plan. See [docs/rfc-map.md](docs/
 | RFC 7633 | Proposed Standard | 2015-10 | the TLS Feature extension behind OCSP must-staple |
 | RFC 5940 | Proposed Standard | 2010-08 | revocation choices carried inside CMS, the signed document case |
 | RFC 5280 | Proposed Standard | 2008-05 | the CRL and delta CRL profile and CRL validation the crl module follows |
+| RFC 10007 | Proposed Standard | 2026-06 | the cRLSign key usage check CRL validation now requires |
+| RFC 9608 | Proposed Standard | 2024-06 | noRevAvail, which says whether revocation checking applies |
+| RFC 5754 | Proposed Standard | 2010-01 | the SHA-256 definition RFC 9919 sec. 3.1.1 points to |
 
 ### Errata watch
 

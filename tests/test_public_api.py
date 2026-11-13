@@ -15,7 +15,7 @@ import pytest
 import revokekit as package
 
 SURFACE = [
-    ("request", "build", "RFC 6960 sec. 4.1, RFC 9919 sec. 3.1.1"),
+    ("request", "build", "RFC 6960 sec. 4.1.1, RFC 9919 sec. 3.1.1"),
     ("response", "parse_and_verify", "RFC 6960"),
     ("nonce", "generate", "RFC 9654 sec. 2.1"),
     ("nonce", "check", "RFC 9654 sec. 2.1"),

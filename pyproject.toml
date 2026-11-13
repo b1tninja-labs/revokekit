@@ -32,7 +32,12 @@ classifiers = [
 ]
 # Empty unless a module cannot be honest without it. Every entry needs a sentence in
 # README.md explaining why the zero-dependency rule was broken for it.
-dependencies = []
+#
+# asn1core is ours, and an OCSP response is a signed DER object: the signature covers the
+# bytes that arrived, so the codec has to keep them (docs/strategy.md says why in full). It is not
+# on an index yet, so until it ships it resolves from the sibling checkout, as pkix does.
+# Nothing third-party is declared: signature arithmetic will come through sigprim, not here.
+dependencies = ["asn1core"]
 
 [project.optional-dependencies]
 dev = [
@@ -68,7 +73,8 @@ include = ["/revokekit/", "/tests/", "/docs/", "/README.md", "/ROADMAP.md", "/CH
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["."]
+# "../asn1core" resolves the codec from the sibling checkout in this workspace (see `dependencies`).
+pythonpath = [".", "../asn1core"]
 asyncio_mode = "auto"
 addopts = "-ra"
 
@@ -81,7 +87,7 @@ source = ["revokekit"]
 # coverage for the line that raises. Raise this in the commit that implements a
 # milestone, never in a commit that only adds tests, so the number keeps meaning
 # "this behaviour is exercised" rather than "this file was imported".
-fail_under = 45
+fail_under = 80
 show_missing = true
 exclude_lines = [
   "if __name__ == .__main__.:",
@@ -112,6 +118,8 @@ indent-style = "space"
 
 [tool.mypy]
 python_version = "3.12"
+# Checked against asn1core's own annotations when the sibling checkout is present.
+mypy_path = "../asn1core"
 warn_unused_ignores = true
 warn_redundant_casts = true
 no_implicit_optional = true
